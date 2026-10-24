@@ -1,0 +1,15 @@
+{
+  "name": "Video",
+  "version": "1.0.0",
+  "identifier": "com.freebsdx.videoplayer",
+  "executable": "bin/videoplayer",
+  "icon": "Resources/icon.svg",
+  "permissions": [
+    "com.freebsdx.permission.UI"
+  ],
+  "mime_types": [
+    "video/mp4",
+    "video/x-matroska",
+    "video/webm"
+  ]
+}
