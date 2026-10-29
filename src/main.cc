@@ -197,7 +197,12 @@ int main(int argc, char** argv) {
 
     // ── Pre-load from command line ────────────────────────────────────────────
     std::string preload_path;
-    if (argc >= 2) preload_path = argv[1];
+    // xshell opens files with "--open <path>"; a bare path works too.
+    for (int i = 1; i < argc; ++i) {
+        std::string a = argv[i];
+        if (a == "--open") { if (i + 1 < argc) preload_path = argv[i + 1]; break; }
+        if (!a.empty() && a[0] != '-') { preload_path = a; break; }
+    }
 
     return XApplication::Run(root, "/tmp/freebsdx.sock", /*sandboxed=*/false,
                               /*is_shell=*/false,
