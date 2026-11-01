@@ -167,15 +167,29 @@ int main(int argc, char** argv) {
     controls_row->setCrossAxisAlignment(CrossAxisAlignment::Center);
     controls_row->setGap(0.0f);
     controls_row->setPadding(12.0f);
-    controls_row->setFixedSize(static_cast<float>(kVidW), kCtrlH);
+    controls_row->setFixedSize(0.0f, kCtrlH);   // full window width (0 = auto), fixed height
     controls_row->setBackgroundColor(Color{0.12f, 0.12f, 0.14f, 1.0f});
 
     // ── Root layout ───────────────────────────────────────────────────────────
+    // Title bar, the video filling the space between, the controls along the
+    // bottom — all window-wide (it was a fixed 960x540 video and a 960 px
+    // control bar floating in the 1200x820 window).
+    auto title_bar = std::make_shared<FlexColumn>(std::vector<std::shared_ptr<Widget>>{title_w});
+    title_bar->setPadding(8.0f);
+    title_bar->setBackgroundColor(Color{0.08f, 0.08f, 0.10f, 1.0f});
+    // The surface has its own fixed size; centre it in a black area that takes
+    // the window's remaining height (letterboxed), so the controls sit at the bottom.
+    auto video_area = std::make_shared<FlexColumn>(std::vector<std::shared_ptr<Widget>>{video});
+    video_area->setFlexGrow(1.0f);
+    video_area->setMainAxisAlignment(MainAxisAlignment::Center);
+    video_area->setCrossAxisAlignment(CrossAxisAlignment::Center);
+    video_area->setBackgroundColor(Color{0.0f, 0.0f, 0.0f, 1.0f});
     auto root = std::make_shared<FlexColumn>(std::vector<std::shared_ptr<Widget>>{
-        title_w,
-        video,
+        title_bar,
+        video_area,
         controls_row,
     });
+    root->setCrossAxisAlignment(CrossAxisAlignment::Stretch);
     root->setGap(0.0f);
     root->setBackgroundColor(Color{0.0f, 0.0f, 0.0f, 1.0f});
 
