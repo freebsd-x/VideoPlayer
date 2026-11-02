@@ -184,6 +184,7 @@ int main(int argc, char** argv) {
     video_area->setMainAxisAlignment(MainAxisAlignment::Center);
     video_area->setCrossAxisAlignment(CrossAxisAlignment::Center);
     video_area->setBackgroundColor(Color{0.0f, 0.0f, 0.0f, 1.0f});
+    video_area->setKeepColors(true);   // the letterbox stays black in the light theme
     auto root = std::make_shared<FlexColumn>(std::vector<std::shared_ptr<Widget>>{
         title_bar,
         video_area,
