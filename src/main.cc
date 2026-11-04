@@ -11,6 +11,7 @@
 #include "xkit/application.h"
 #include "xkit/video_surface.h"
 #include "xkit/xbus_client.h"
+#include "xkit/file_dialog.h"
 #include "shared/protocol.h"
 #include <memory>
 #include <string>
@@ -148,8 +149,36 @@ int main(int argc, char** argv) {
         sl->setValue(0.0f);
     });
 
+    // ── Open ──────────────────────────────────────────────────────────────────
+    // The app is sandboxed: past start-up it can't open a path. The user picks
+    // in the shell's file picker and it receives that one file.
+    auto show_opened = [&v = *video, lbl = play_label, title = title_w](bool ok, const std::string& path) {
+        const auto sep = path.rfind('/');
+        const std::string name = sep != std::string::npos ? path.substr(sep + 1) : path;
+        if (ok) {
+            v.play();
+            lbl->setText("⏸");
+            ssInhibit(); // suppress screen saver while video plays
+            title->setText(name);
+        } else {
+            title->setText("Can't play " + name);
+        }
+    };
+    auto pick_file = [&v = *video, show_opened, title = title_w](const std::string& dir) {
+        auto* bus = XApplication::getBus();
+        if (!bus) return;
+        XFileDialog::pickToOpen(*bus, "Open Video", dir, [&v, show_opened, title](XFileDialog::Picked p) {
+            if (p.cancelled) return;
+            if (!p.fd) { title->setText("Couldn't open that file: " + p.error); return; }
+            show_opened(v.open(p.fd.get(), p.path), p.path);
+        });
+    };
+    auto open_btn = std::make_shared<ButtonWidget>("Open…", [pick_file]() { pick_file(""); });
+
     // ── Controls bar ─────────────────────────────────────────────────────────
     auto controls_row = std::make_shared<FlexRow>(std::vector<std::shared_ptr<Widget>>{
+        open_btn,
+        std::make_shared<Spacer>(8, 0),
         play_btn,
         std::make_shared<Spacer>(8, 0),
         stop_btn,
@@ -194,22 +223,6 @@ int main(int argc, char** argv) {
     root->setGap(0.0f);
     root->setBackgroundColor(Color{0.0f, 0.0f, 0.0f, 1.0f});
 
-    // ── File-open helper ─────────────────────────────────────────────────────
-    auto open_file = [&v = *video, lbl = play_label, title = title_w,
-                      tc = time_cur_w, td = time_dur_w, sl = seek_slider](
-                      const std::string& path) {
-        if (v.open(path)) {
-            v.play();
-            lbl->setText("⏸");
-            ssInhibit(); // suppress screen saver while video plays
-            // Title: basename
-            auto sep = path.rfind('/');
-            title->setText(sep != std::string::npos ? path.substr(sep + 1) : path);
-        } else {
-            title->setText("Cannot open: " + path);
-        }
-    };
-
     // ── Pre-load from command line ────────────────────────────────────────────
     std::string preload_path;
     // xshell opens files with "--open <path>"; a bare path works too.
@@ -221,12 +234,9 @@ int main(int argc, char** argv) {
 
     return XApplication::Run(root, "/tmp/freebsdx.sock", /*sandboxed=*/false,
                               /*is_shell=*/false,
-        [open_file, preload_path, video](XBusClient& xbus) {
+        [show_opened, pick_file, preload_path, video](XBusClient& xbus) {
             g_xbus = &xbus; // enable ssInhibit/ssUninhibit calls
-            // Give XVideoSurface access to XBus for audio stream
-            // (passed at construction time via pointer; we set it retroactively)
-            // — video was created before xbus existed, register now
-            // (AudioPlayer opening happens on first open() anyway)
+            video->setBus(&xbus);   // its sound goes through the audio service
 
             // Register as default MIME handler for video/*
             {
@@ -240,33 +250,20 @@ int main(int argc, char** argv) {
                           nullptr);
             }
 
-            // Subscribe to LaunchWithFile broadcasts
-            xbus.OnBroadcast([open_file](const XBusMessage& msg) {
-                if (std::strcmp(msg.service_name_, "com.freebsdx.Shell") != 0) return;
-                if (msg.opcode_ != static_cast<uint32_t>(ShellOpcode::LaunchWithFile)) return;
-
-                ShellLaunchRequest req{};
-                std::memcpy(&req, msg.payload_, sizeof(req));
-                req.app_id_[sizeof(req.app_id_) - 1]       = '\0';
-                req.file_path_[sizeof(req.file_path_) - 1] = '\0';
-
-                if (std::strcmp(req.app_id_, "com.freebsdx.videoplayer") == 0 &&
-                    req.file_path_[0] != '\0' && isVideoExtension(req.file_path_)) {
-                    open_file(req.file_path_);
-                }
-            });
-
-            // Accept drag-and-drop of video files from Files app
+            // A file dropped here arrives as a path this sandbox can't open, so
+            // ask for it through the picker, starting in its folder.
             XApplication::setOnDrop("text/uri-list",
-                [open_file](float, float, const std::string& data) {
+                [pick_file](float, float, const std::string& data) {
                     std::string path = uriToPath(data);
-                    if (!path.empty() && isVideoExtension(path))
-                        open_file(path);
+                    if (path.empty() || !isVideoExtension(path)) return;
+                    const auto sep = path.rfind('/');
+                    pick_file(sep != std::string::npos ? path.substr(0, sep) : "");
                 });
 
             XApplication::setTitle("Video Player");
 
             // Load pre-specified file
-            if (!preload_path.empty()) open_file(preload_path);
+            // (this runs before the sandbox starts, so a path still opens)
+            if (!preload_path.empty()) show_opened(video->open(preload_path), preload_path);
         });
 }
